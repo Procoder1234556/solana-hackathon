@@ -1,0 +1,87 @@
+name: Codebase health
+
+on:
+  pull_request:
+  push:
+  schedule:
+    - cron: "17 5 * * 1-5"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  quality-and-deployability:
+    name: Quality and deployability
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install locked dependencies
+        run: npm ci
+      - name: Validate documentation contract
+        run: npm run test:docs
+      - name: Lint
+        run: npm run lint
+      - name: Type check
+        run: npx tsc --noEmit
+      - name: Unit tests
+        run: npm run test
+      - name: Production build
+        run: npm run build
+      - name: Runtime dependency audit
+        run: npm audit --omit=dev --audit-level=high
+
+  browser-regression:
+    name: Browser regression
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install locked dependencies
+        run: npm ci
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+      - name: Run Playwright flows
+        run: npm run test:e2e
+      - name: Upload browser evidence
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: playwright-report/
+          if-no-files-found: ignore
+
+  triage-summary:
+    name: Triage summary
+    if: always()
+    needs: [quality-and-deployability, browser-regression]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Publish actionable outcome
+        env:
+          QUALITY_RESULT: ${{ needs.quality-and-deployability.result }}
+          BROWSER_RESULT: ${{ needs.browser-regression.result }}
+        run: |
+          {
+            echo "## Codebase health triage"
+            echo
+            echo "- Quality and deployability: $QUALITY_RESULT"
+            echo "- Browser regression: $BROWSER_RESULT"
+            echo
+            echo "Use docs/AGENT_CORRECTION_LOOP.md to reproduce and assign any failure."
+            echo "This workflow verifies build readiness only; it does not deploy or mutate production."
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Fail when a gate failed
+        env:
+          QUALITY_RESULT: ${{ needs.quality-and-deployability.result }}
+          BROWSER_RESULT: ${{ needs.browser-regression.result }}
+        run: test "$QUALITY_RESULT" = success -a "$BROWSER_RESULT" = success

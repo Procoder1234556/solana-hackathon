@@ -1,0 +1,23 @@
+---
+description: PayProof test-first loop engineering and privacy gate
+alwaysApply: true
+---
+
+# Loop engineering
+
+Work in short, evidence-driven loops:
+
+1. Load the relevant requirement from `../prompts-directory/` and the narrow source/test context.
+2. Turn one acceptance criterion into a failing or changed automated test.
+3. Implement only enough to make that test pass.
+4. Run the focused test, then `npm run lint`, `npm run test`, and `npm run build`.
+5. For an end-user journey, add/run the relevant Playwright test.
+
+Never advance a phase based on an unverified claim. Report unavailable infrastructure (database, funded devnet wallets, RPC capability, browsers) as a blocked check, not a pass.
+
+# PayProof invariants
+
+- No private keys, seed phrases, plaintext receipt fields, or disclosure secrets in requests, logs, URLs, analytics, or server errors.
+- Confidential does not mean anonymous: participants remain public on-chain.
+- An RPC failure or insufficient finality cannot create a valid receipt.
+- The non-confidential fallback must be visibly labelled if the confidential-transfer POC fails.

@@ -1,0 +1,19 @@
+---
+description: Prefer the project's installed expert skills for every task.
+alwaysApply: true
+---
+
+# Skill-first workflow
+
+Before acting on every prompt, inspect the available project skills and select every skill materially relevant to the request. Read each selected skill's `SKILL.md` completely, then follow it for the duration of the task.
+
+Prefer the installed collections in `.agents/skills`, especially:
+
+- Superpowers for brainstorming, plans, debugging, tests, verification, reviews, and Git worktrees.
+- Ponytail and Caveman for focused code review, audit, and compact task workflows.
+- UI/UX Pro Max, Graphify, and Impeccable for product, frontend, and interface work.
+- Addy Osmani's agent skills for engineering discipline, performance, security, testing, and delivery.
+- Understand Anything and Archify for codebase comprehension and architecture.
+- The project-local Awesome Claude Skills for documents, research, automation, media, and specialized workflows.
+
+Use the smallest relevant set of skills; do not load unrelated skill instructions. If multiple skills apply, follow the most specific one first, then any general workflow skill. This rule is a preference layer and never overrides user instructions, system/developer instructions, or safety requirements.

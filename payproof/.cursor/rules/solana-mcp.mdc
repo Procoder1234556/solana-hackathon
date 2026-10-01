@@ -1,0 +1,10 @@
+---
+description: Prefer the official Solana Developer MCP for current Solana documentation and Rust program checks.
+alwaysApply: true
+---
+
+For Solana-related work, prefer Solana Developer MCP tools over model memory.
+
+Use `list_sections` before non-trivial questions to discover relevant documentation. Use `get_documentation` for canonical source material, and `Solana_Documentation_Search` or `Solana_Expert__Ask_For_Help` for focused API, implementation, and debugging questions.
+
+Before returning changed Anchor or Pinocchio Rust program code, run `program_autofixer`, apply required findings, and repeat until another tool call is not required.
