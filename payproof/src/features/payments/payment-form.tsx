@@ -1,11 +1,13 @@
 "use client";
 
-import { useState, type FormEvent } from "react";
+import { useState, useRef, type FormEvent } from "react";
 
 import { createPaymentReview, type PaymentReview } from "@/lib/payment-request";
 import { readPublicRuntimeConfig } from "@/lib/runtime-config";
 import { submitToken2022Transfer } from "@/lib/token-2022-transfer";
 import { connectEmployerWallet, getPhantomSolanaWallet } from "@/lib/wallet-session";
+import { createReceiptDraft } from "@/lib/receipt-creation";
+import { encryptReceiptEnvelope } from "@/lib/receipt-envelope";
 
 const initialFields = {
   recipientPublicKey: "",
@@ -15,18 +17,61 @@ const initialFields = {
   invoiceReference: "",
 };
 
+type ReceiptStep =
+  | { stage: "idle" }
+  | { stage: "submitting" }
+  | { stage: "polling"; signature: string }
+  | { stage: "confirmed"; signature: string; receiptHash: string; receiptDraftJson: string }
+  | { stage: "stored"; id: string; signature: string }
+  | { stage: "failed"; message: string };
+
 export function PaymentForm() {
-  const [fields, setFields] = useState(initialFields);
+  const [fields, setFields] = useState(() => {
+    let defaultMint = "";
+    try {
+      const config = readPublicRuntimeConfig();
+      defaultMint = config.NEXT_PUBLIC_DEVNET_TOKEN_2022_MINT || config.NEXT_PUBLIC_CASH_MINT || "";
+    } catch {
+      // test fallback
+    }
+    return { ...initialFields, mintAddress: defaultMint };
+  });
   const [review, setReview] = useState<PaymentReview | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [walletPublicKey, setWalletPublicKey] = useState<string | null>(null);
-  const [submission, setSubmission] = useState<{ status: "pending" | "failed"; message?: string; signature?: string } | null>(null);
+  const [contractorPubKeyB64, setContractorPubKeyB64] = useState("");
+  const [receiptStep, setReceiptStep] = useState<ReceiptStep>({ stage: "idle" });
+  const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   async function connectWallet() {
     try {
       const wallet = await connectEmployerWallet(getPhantomSolanaWallet());
       setWalletPublicKey(wallet.publicKey);
       setError(null);
+
+      // Opportunistically establish employer session if Phantom signMessage is available
+      try {
+        const phantom = (window as unknown as { phantom?: { solana?: { signMessage?: (msg: Uint8Array) => Promise<{ signature: Uint8Array }> } } }).phantom?.solana;
+        if (phantom?.signMessage) {
+          const nonceRes = await fetch("/api/auth/nonce", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ publicKey: wallet.publicKey }),
+          });
+          if (nonceRes.ok) {
+            const { nonce } = (await nonceRes.json()) as { nonce: string };
+            const { signature } = await phantom.signMessage(new TextEncoder().encode(`PayProof sign-in\n${nonce}`));
+            const { default: bs58 } = await import("bs58");
+            await fetch("/api/auth/verify", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ publicKey: wallet.publicKey, nonce, signature: bs58.encode(signature), role: "EMPLOYER" }),
+            });
+          }
+        }
+      } catch {
+        // Non-blocking in tests or if user cancels signMessage
+      }
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Unable to connect Phantom wallet.");
     }
@@ -51,12 +96,66 @@ export function PaymentForm() {
     }
   }
 
+  function stopPolling() {
+    if (pollingRef.current) {
+      clearInterval(pollingRef.current);
+      pollingRef.current = null;
+    }
+  }
+
+  async function pollForFinality(signature: string, issuerPublicKey: string, currentReview: PaymentReview) {
+    const config = readPublicRuntimeConfig();
+    setReceiptStep({ stage: "polling", signature });
+
+    pollingRef.current = setInterval(async () => {
+      try {
+        const rpcRes = await fetch(config.NEXT_PUBLIC_SOLANA_RPC_URL, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            jsonrpc: "2.0",
+            id: 1,
+            method: "getTransaction",
+            params: [signature, { encoding: "json", commitment: "finalized", maxSupportedTransactionVersion: 0 }],
+          }),
+        });
+        const json = await rpcRes.json() as { result?: { meta?: { err?: unknown } | null; transaction?: { message?: { accountKeys?: string[] } } } | null };
+        if (!json.result || json.result.meta?.err) return;
+        const accountKeys = json.result.transaction?.message?.accountKeys ?? [];
+        if (!accountKeys.includes(issuerPublicKey)) return;
+
+        stopPolling();
+
+        const evidence = {
+          finality: "finalized" as const,
+          accountKeys,
+          tokenMints: [currentReview.mintAddress],
+        };
+
+        const draft = await createReceiptDraft(
+          { ...currentReview, issuerPublicKey },
+          signature,
+          evidence,
+        );
+
+        setReceiptStep({
+          stage: "confirmed",
+          signature,
+          receiptHash: draft.receiptHash,
+          receiptDraftJson: JSON.stringify(draft.payload),
+        });
+      } catch {
+        // Polling errors are transient — keep retrying.
+      }
+    }, 4000);
+  }
+
   async function submitTransfer() {
     if (!review) return;
     try {
       const wallet = getPhantomSolanaWallet();
       if (!wallet.signAndSendTransaction) throw new Error("The connected wallet cannot submit Solana transactions.");
-      setSubmission({ status: "pending", message: "Awaiting wallet approval and Devnet submission." });
+      setReceiptStep({ stage: "submitting" });
       const config = readPublicRuntimeConfig();
       const result = await submitToken2022Transfer({
         rpcUrl: config.NEXT_PUBLIC_SOLANA_RPC_URL,
@@ -66,9 +165,74 @@ export function PaymentForm() {
         amount: review.amount,
         signAndSendTransaction: wallet.signAndSendTransaction,
       });
-      setSubmission({ status: "pending", signature: result.signature, message: "Submitted. Waiting for finalized RPC evidence before creating a receipt." });
+      await pollForFinality(result.signature, review.issuerPublicKey, review);
     } catch (reason) {
-      setSubmission({ status: "failed", message: reason instanceof Error ? reason.message : "The transaction could not be submitted." });
+      stopPolling();
+      setReceiptStep({ stage: "failed", message: reason instanceof Error ? reason.message : "The transaction could not be submitted." });
+    }
+  }
+
+  async function storeReceipt() {
+    if (receiptStep.stage !== "confirmed" || !review) return;
+    if (!contractorPubKeyB64.trim()) {
+      setError("Enter the contractor's RSA encryption public key to encrypt and store the receipt.");
+      return;
+    }
+    try {
+      const payload = JSON.parse(receiptStep.receiptDraftJson) as unknown;
+      const envelope = await encryptReceiptEnvelope(payload, contractorPubKeyB64.trim());
+      const envelopeB64 = btoa(JSON.stringify(envelope));
+
+      const receiptPayload = {
+        issuerPublicKey: review.issuerPublicKey,
+        recipientPublicKey: review.recipientPublicKey,
+        transactionSignature: receiptStep.signature,
+        mintAddress: review.mintAddress,
+        receiptHash: receiptStep.receiptHash,
+        encryptedEnvelope: envelopeB64,
+      };
+
+      let res = await fetch("/api/receipts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(receiptPayload),
+      });
+
+      if (res.status === 401) {
+        // Attempt session sign-in with Phantom
+        const phantom = (window as unknown as { phantom?: { solana?: { signMessage?: (msg: Uint8Array) => Promise<{ signature: Uint8Array }> } } }).phantom?.solana;
+        if (phantom?.signMessage) {
+          const nonceRes = await fetch("/api/auth/nonce", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ publicKey: review.issuerPublicKey }),
+          });
+          if (nonceRes.ok) {
+            const { nonce } = (await nonceRes.json()) as { nonce: string };
+            const { signature } = await phantom.signMessage(new TextEncoder().encode(`PayProof sign-in\n${nonce}`));
+            const { default: bs58 } = await import("bs58");
+            const authRes = await fetch("/api/auth/verify", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ publicKey: review.issuerPublicKey, nonce, signature: bs58.encode(signature), role: "EMPLOYER" }),
+            });
+            if (authRes.ok) {
+              res = await fetch("/api/receipts", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(receiptPayload),
+              });
+            }
+          }
+        }
+      }
+
+      const data = await res.json() as { id?: string; error?: { message?: string } };
+      if (!res.ok) throw new Error(data.error?.message ?? "Failed to store receipt.");
+      setReceiptStep({ stage: "stored", id: data.id!, signature: receiptStep.signature });
+      setError(null);
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Failed to store receipt.");
     }
   }
 
@@ -91,11 +255,79 @@ export function PaymentForm() {
         <div className="rounded-lg border border-[var(--warning)] bg-[var(--warning-surface)] p-4 text-sm leading-6 text-[var(--foreground)]">
           Amounts may be confidential when the supported transfer capability is proven. Wallet participation remains public. This build currently uses the non-confidential receipt fallback.
         </div>
-        <div className="flex flex-col gap-3 sm:flex-row">
-          <button type="button" onClick={() => setReview(null)} className="min-h-11 rounded-lg border border-[var(--border)] px-4 font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--primary)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--background)]">Edit details</button>
-          <button type="button" onClick={submitTransfer} disabled={submission?.status === "pending"} className="min-h-11 rounded-lg bg-[var(--primary)] px-4 py-2.5 text-center font-semibold text-[var(--primary-foreground)] disabled:cursor-not-allowed disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--primary)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--background)]">Submit non-confidential Token-2022 transfer</button>
-        </div>
-        {submission ? <div role={submission.status === "failed" ? "alert" : "status"} className="rounded-lg border border-[var(--border)] p-4 text-sm"><p>{submission.message}</p>{submission.signature ? <a className="mt-2 inline-block break-all font-mono text-[var(--primary)] underline" href={`https://explorer.solana.com/tx/${submission.signature}?cluster=devnet`} target="_blank" rel="noreferrer">View submitted transaction in Explorer</a> : null}</div> : null}
+
+        {receiptStep.stage === "idle" && (
+          <div className="flex flex-col gap-3 sm:flex-row">
+            <button type="button" onClick={() => setReview(null)} className="min-h-11 rounded-lg border border-[var(--border)] px-4 font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--primary)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--background)]">Edit details</button>
+            <button type="button" onClick={() => void submitTransfer()} className="min-h-11 rounded-lg bg-[var(--primary)] px-4 py-2.5 text-center font-semibold text-[var(--primary-foreground)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--primary)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--background)]">Submit non-confidential Token-2022 transfer</button>
+          </div>
+        )}
+
+        {receiptStep.stage === "submitting" && (
+          <div role="status" className="rounded-lg border border-[var(--border)] p-4 text-sm">
+            <p>Awaiting wallet approval and Devnet submission…</p>
+          </div>
+        )}
+
+        {receiptStep.stage === "polling" && (
+          <div role="status" className="rounded-lg border border-[var(--border)] p-4 text-sm space-y-2">
+            <p>Submitted. Polling for finalized confirmation every 4 s…</p>
+            <a className="inline-block break-all font-mono text-[var(--primary)] underline" href={`https://explorer.solana.com/tx/${receiptStep.signature}?cluster=devnet`} target="_blank" rel="noreferrer">View transaction in Explorer</a>
+          </div>
+        )}
+
+        {receiptStep.stage === "confirmed" && (
+          <div className="space-y-5 rounded-lg border border-green-700/60 bg-green-900/20 p-5">
+            <p className="font-semibold text-green-400">✓ Transaction finalized — ready to store receipt</p>
+            <a className="block break-all font-mono text-sm text-[var(--primary)] underline" href={`https://explorer.solana.com/tx/${receiptStep.signature}?cluster=devnet`} target="_blank" rel="noreferrer">View transaction in Explorer</a>
+            <div className="space-y-2">
+              <label className="block text-sm font-semibold" htmlFor="contractor-pubkey">Contractor RSA-OAEP encryption public key (base64, spki)</label>
+              <p className="text-xs text-[var(--muted)]">The receipt is encrypted to this key in your browser. The server stores only the encrypted envelope.</p>
+              <textarea
+                id="contractor-pubkey"
+                rows={3}
+                placeholder="Base64 RSA-OAEP public key (spki format)…"
+                value={contractorPubKeyB64}
+                onChange={(e) => setContractorPubKeyB64(e.target.value.trim())}
+                className="w-full rounded-lg border border-[var(--border)] bg-[var(--background)] px-3 py-2 font-mono text-xs text-[var(--foreground)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--primary)]"
+              />
+            </div>
+            {error && <p role="alert" className="rounded-lg border border-[var(--danger)] bg-[var(--danger-surface)] p-3 text-sm">{error}</p>}
+            <button type="button" onClick={() => void storeReceipt()} disabled={!contractorPubKeyB64.trim()} className="min-h-11 rounded-lg bg-[var(--primary)] px-4 py-2.5 font-semibold text-[var(--primary-foreground)] disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--primary)]">
+              Encrypt and store receipt
+            </button>
+          </div>
+        )}
+
+        {receiptStep.stage === "stored" && (
+          <div className="rounded-lg border border-green-700/60 bg-green-900/20 p-5 space-y-4">
+            <p className="font-semibold text-green-400">✓ Receipt stored</p>
+            <p className="text-sm text-[var(--muted)]">The encrypted receipt is stored. The contractor can decrypt it from their vault.</p>
+            <a className="block text-sm font-mono text-[var(--primary)] underline break-all" href={`https://explorer.solana.com/tx/${receiptStep.signature}?cluster=devnet`} target="_blank" rel="noreferrer">View transaction in Explorer ↗</a>
+            <div className="flex flex-col gap-3 sm:flex-row pt-2">
+              <a
+                href="/contractor/receipts"
+                className="inline-flex min-h-11 items-center justify-center rounded-lg bg-[var(--primary)] px-4 py-2.5 font-semibold text-[var(--primary-foreground)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--primary)]"
+              >
+                Go to contractor vault →
+              </a>
+              <button
+                type="button"
+                onClick={() => { setReceiptStep({ stage: "idle" }); setReview(null); }}
+                className="inline-flex min-h-11 items-center justify-center rounded-lg border border-[var(--border)] px-4 py-2.5 font-medium hover:bg-[var(--surface)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--primary)]"
+              >
+                Issue another payment
+              </button>
+            </div>
+          </div>
+        )}
+
+        {receiptStep.stage === "failed" && (
+          <div role="alert" className="rounded-lg border border-[var(--danger)] bg-[var(--danger-surface)] p-4 text-sm space-y-2">
+            <p>{receiptStep.message}</p>
+            <button type="button" onClick={() => setReceiptStep({ stage: "idle" })} className="text-[var(--primary)] underline text-sm">Try again</button>
+          </div>
+        )}
       </section>
     );
   }
@@ -112,7 +344,7 @@ export function PaymentForm() {
           <p className="font-medium">Employer wallet</p>
           <p className="break-all text-sm text-[var(--muted)]">{walletPublicKey ?? "Connect Phantom before you review or sign."}</p>
         </div>
-        <button type="button" onClick={connectWallet} className="min-h-11 shrink-0 rounded-lg border border-[var(--border)] px-4 font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--primary)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--background)]">{walletPublicKey ? "Reconnect Phantom" : "Connect Phantom"}</button>
+        <button type="button" onClick={() => void connectWallet()} className="min-h-11 shrink-0 rounded-lg border border-[var(--border)] px-4 font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--primary)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--background)]">{walletPublicKey ? "Reconnect Phantom" : "Connect Phantom"}</button>
       </div>
       {error ? <p role="alert" className="rounded-lg border border-[var(--danger)] bg-[var(--danger-surface)] p-3 text-sm text-[var(--foreground)]">{error}</p> : null}
       <div className="grid gap-5">

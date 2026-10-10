@@ -1,0 +1,7 @@
+{
+  "mcpServers": {
+    "solana-mcp": {
+      "serverUrl": "https://mcp.solana.com/mcp"
+    }
+  }
+}
