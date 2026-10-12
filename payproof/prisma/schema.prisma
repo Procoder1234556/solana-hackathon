@@ -1,21 +1,27 @@
-generator client {
-  provider = "prisma-client-js"
-}
-
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
+  schemas  = ["payproof"]
+}
+
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["multiSchema"]
 }
 
 enum WalletRole {
   EMPLOYER
   CONTRACTOR
+
+  @@schema("payproof")
 }
 
 enum ReceiptStatus {
   PENDING
   CONFIRMED
   FAILED
+
+  @@schema("payproof")
 }
 
 model WalletIdentity {
@@ -25,6 +31,8 @@ model WalletIdentity {
   nonceHash String?
   createdAt DateTime   @default(now())
   updatedAt DateTime   @updatedAt
+
+  @@schema("payproof")
 }
 
 model Receipt {
@@ -39,6 +47,8 @@ model Receipt {
   createdAt            DateTime      @default(now())
   updatedAt            DateTime      @updatedAt
   disclosures          Disclosure[]
+
+  @@schema("payproof")
 }
 
 model Disclosure {
@@ -55,6 +65,8 @@ model Disclosure {
   createdAt        DateTime  @default(now())
   updatedAt        DateTime  @updatedAt
   receipt          Receipt   @relation(fields: [receiptId], references: [id], onDelete: Cascade)
+
+  @@schema("payproof")
 }
 
 model AuditEvent {
@@ -64,4 +76,6 @@ model AuditEvent {
   subjectId String
   metadata  Json
   createdAt DateTime @default(now())
+
+  @@schema("payproof")
 }
