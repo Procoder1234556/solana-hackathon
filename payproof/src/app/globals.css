@@ -148,15 +148,78 @@
   animation: dj-scroll-right 40s linear infinite;
 }
 
-@keyframes pop-in {
-  from {
-    opacity: 0;
-    transform: scale(0.92);
-  }
-  to {
-    opacity: 1;
-    transform: scale(1);
-  }
+@keyframes cloud-drift-slow {
+  0% { transform: translateX(0); }
+  50% { transform: translateX(-30px); }
+  100% { transform: translateX(0); }
+}
+
+@keyframes cloud-drift-reverse {
+  0% { transform: translateX(0); }
+  50% { transform: translateX(30px); }
+  100% { transform: translateX(0); }
+}
+
+@keyframes celestial-glow {
+  0%, 100% { opacity: 0.4; filter: blur(120px); transform: scale(1); }
+  50% { opacity: 0.75; filter: blur(140px); transform: scale(1.15); }
+}
+
+@keyframes ethereal-pulse {
+  0%, 100% { transform: translateY(0); filter: drop-shadow(0 0 15px rgba(56, 189, 248, 0.35)); }
+  50% { transform: translateY(-8px); filter: drop-shadow(0 0 35px rgba(96, 165, 250, 0.65)); }
+}
+
+@keyframes shimmer-sweep {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+.animate-cloud-drift {
+  animation: cloud-drift-slow 22s ease-in-out infinite;
+}
+
+.animate-cloud-drift-reverse {
+  animation: cloud-drift-reverse 26s ease-in-out infinite;
+}
+
+.animate-celestial-glow {
+  animation: celestial-glow 8s ease-in-out infinite;
+}
+
+.animate-ethereal-float {
+  animation: ethereal-pulse 6s ease-in-out infinite;
+}
+
+.shimmer-text {
+  background: linear-gradient(90deg, rgba(255,255,255,0.7) 0%, rgba(255,255,255,1) 50%, rgba(147,197,253,0.9) 100%);
+  background-size: 200% 100%;
+  animation: shimmer-sweep 6s linear infinite;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.celestial-card-glow {
+  position: relative;
+  transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.celestial-card-glow::before {
+  content: "";
+  position: absolute;
+  inset: -1px;
+  border-radius: inherit;
+  padding: 1px;
+  background: linear-gradient(135deg, rgba(96, 165, 250, 0.5), rgba(59, 130, 246, 0.1), rgba(147, 197, 253, 0.4));
+  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  pointer-events: none;
+}
+
+.celestial-card-glow:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 20px 40px -15px rgba(37, 99, 235, 0.35);
 }
 
 @keyframes fade-in {
