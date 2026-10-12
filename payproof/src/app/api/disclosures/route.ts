@@ -63,6 +63,24 @@ export async function POST(request: Request) {
     select: { id: true, expiresAt: true },
   });
 
+  // Record audit event
+  try {
+    await prisma.auditEvent.create({
+      data: {
+        actorKey: session.publicKey,
+        eventType: "DISCLOSURE_CREATED",
+        subjectId: disclosure.id,
+        metadata: {
+          receiptId: body.receiptId,
+          fieldsDisclosed: body.fields,
+          expiresAt: expiresAt.toISOString(),
+        },
+      },
+    });
+  } catch {
+    // Non-fatal if audit logging fails
+  }
+
   const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
   return NextResponse.json({
     id: disclosure.id,

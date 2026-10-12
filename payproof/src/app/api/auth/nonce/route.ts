@@ -6,6 +6,7 @@ import { createHash, randomBytes } from "node:crypto";
 
 const bodySchema = z.object({
   publicKey: z.string().min(32).max(64),
+  role: z.enum(["EMPLOYER", "CONTRACTOR"]).optional(),
 });
 
 /**
@@ -15,9 +16,14 @@ const bodySchema = z.object({
  */
 export async function POST(request: Request) {
   let publicKey: string;
+  let requestedRole: "EMPLOYER" | "CONTRACTOR" = "EMPLOYER";
+
   try {
     const body = bodySchema.parse(await request.json());
     publicKey = body.publicKey;
+    if (body.role) {
+      requestedRole = body.role;
+    }
   } catch {
     return NextResponse.json({ error: { code: "INVALID_INPUT", message: "A valid public key is required.", requestId: crypto.randomUUID() } }, { status: 400 });
   }
@@ -30,7 +36,7 @@ export async function POST(request: Request) {
     await prisma.walletIdentity.upsert({
       where: { publicKey },
       update: { nonceHash },
-      create: { publicKey, role: "EMPLOYER", nonceHash },
+      create: { publicKey, role: requestedRole, nonceHash },
     });
   } catch {
     return NextResponse.json({ error: { code: "SERVER_ERROR", message: "Unable to issue nonce.", requestId: crypto.randomUUID() } }, { status: 500 });

@@ -30,13 +30,42 @@ export function getServerRpcUrl(environment: Record<string, string | undefined> 
   if (environment.SOLANA_RPC_URL?.trim()) return environment.SOLANA_RPC_URL.trim();
   if (environment.QUICKNODE_RPC_URL?.trim()) return environment.QUICKNODE_RPC_URL.trim();
   if (environment.ALCHEMY_RPC_URL?.trim()) return environment.ALCHEMY_RPC_URL.trim();
-  if (environment.TRITON_RPC_URL) return environment.TRITON_RPC_URL;
-  if (environment.HELIUS_API_KEY) return `https://devnet.helius-rpc.com/?api-key=${environment.HELIUS_API_KEY}`;
-  if (environment.NEXT_PUBLIC_HELIUS_RPC_URL) return environment.NEXT_PUBLIC_HELIUS_RPC_URL;
-  if (environment.NEXT_PUBLIC_QUICKNODE_RPC_URL) return environment.NEXT_PUBLIC_QUICKNODE_RPC_URL;
-  if (environment.NEXT_PUBLIC_ALCHEMY_RPC_URL) return environment.NEXT_PUBLIC_ALCHEMY_RPC_URL;
-  if (environment.NEXT_PUBLIC_IRONFORGE_RPC_URL) return environment.NEXT_PUBLIC_IRONFORGE_RPC_URL;
-  if (environment.NEXT_PUBLIC_SHYFT_RPC_URL) return environment.NEXT_PUBLIC_SHYFT_RPC_URL;
-  if (environment.NEXT_PUBLIC_SOLANA_RPC_URL) return environment.NEXT_PUBLIC_SOLANA_RPC_URL;
+  if (environment.TRITON_RPC_URL?.trim()) return environment.TRITON_RPC_URL.trim();
+  if (environment.HELIUS_API_KEY?.trim()) return `https://devnet.helius-rpc.com/?api-key=${environment.HELIUS_API_KEY.trim()}`;
+  if (environment.NEXT_PUBLIC_HELIUS_RPC_URL?.trim()) return environment.NEXT_PUBLIC_HELIUS_RPC_URL.trim();
+  if (environment.NEXT_PUBLIC_QUICKNODE_RPC_URL?.trim()) return environment.NEXT_PUBLIC_QUICKNODE_RPC_URL.trim();
+  if (environment.NEXT_PUBLIC_ALCHEMY_RPC_URL?.trim()) return environment.NEXT_PUBLIC_ALCHEMY_RPC_URL.trim();
+  if (environment.NEXT_PUBLIC_IRONFORGE_RPC_URL?.trim()) return environment.NEXT_PUBLIC_IRONFORGE_RPC_URL.trim();
+  if (environment.NEXT_PUBLIC_SHYFT_RPC_URL?.trim()) return environment.NEXT_PUBLIC_SHYFT_RPC_URL.trim();
+  if (environment.NEXT_PUBLIC_SOLANA_RPC_URL?.trim()) return environment.NEXT_PUBLIC_SOLANA_RPC_URL.trim();
   return "https://api.devnet.solana.com";
+}
+
+/**
+ * Returns prioritized fallback RPC endpoints for resilience and automated failover.
+ */
+export function getFallbackRpcUrls(environment: Record<string, string | undefined> = process.env): string[] {
+  const fallbacks: string[] = [];
+  const add = (url: string | undefined) => {
+    if (url && url.trim() && !fallbacks.includes(url.trim())) {
+      fallbacks.push(url.trim());
+    }
+  };
+
+  add(environment.SOLANA_RPC_URL);
+  if (environment.HELIUS_API_KEY?.trim()) {
+    add(`https://devnet.helius-rpc.com/?api-key=${environment.HELIUS_API_KEY.trim()}`);
+  }
+  add(environment.NEXT_PUBLIC_HELIUS_RPC_URL);
+  add(environment.QUICKNODE_RPC_URL);
+  add(environment.NEXT_PUBLIC_QUICKNODE_RPC_URL);
+  add(environment.ALCHEMY_RPC_URL);
+  add(environment.NEXT_PUBLIC_ALCHEMY_RPC_URL);
+  add(environment.NEXT_PUBLIC_IRONFORGE_RPC_URL);
+  add(environment.NEXT_PUBLIC_SHYFT_RPC_URL);
+  add(environment.TRITON_RPC_URL);
+  add(environment.NEXT_PUBLIC_SOLANA_RPC_URL);
+  add("https://api.devnet.solana.com");
+
+  return fallbacks;
 }

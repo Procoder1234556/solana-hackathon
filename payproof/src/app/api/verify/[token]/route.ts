@@ -69,10 +69,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ tok
     return NextResponse.json({ error: { code: "TRANSACTION_UNVERIFIABLE", message: "The underlying transaction could not be independently verified.", requestId: crypto.randomUUID() } }, { status: 502 });
   }
 
-  // Mark consumed (one-time use).
-  await prisma.disclosure.update({ where: { id: disclosure.id }, data: { consumedAt: new Date() } });
-
-  // Decrypt the payload using the presented one-time token.
+  // Decrypt the payload using the presented one-time token first.
   let values: Record<string, string> = {};
   const encryptedPayloadB64 = Buffer.from(disclosure.encryptedPayload).toString("base64");
   const payloadSignatureB64 = Buffer.from(disclosure.payloadSignature).toString("base64");
@@ -86,6 +83,36 @@ export async function GET(_request: Request, { params }: { params: Promise<{ tok
     }
   } catch {
     // Non-fatal if client used a different payload format
+  }
+
+  // Atomically mark consumed (one-time use) with concurrency protection.
+  try {
+    const updated = await prisma.disclosure.updateMany({
+      where: { id: disclosure.id, consumedAt: null },
+      data: { consumedAt: new Date() },
+    });
+    if (updated.count === 0) {
+      return NextResponse.json({ status: "consumed", requestId: crypto.randomUUID() }, { status: 410 });
+    }
+  } catch {
+    return NextResponse.json({ error: { code: "SERVER_ERROR", message: "Failed to record disclosure consumption.", requestId: crypto.randomUUID() } }, { status: 500 });
+  }
+
+  // Record audit log for verification event
+  try {
+    await prisma.auditEvent.create({
+      data: {
+        actorKey: null, // Verifier is anonymous to contractor
+        eventType: "DISCLOSURE_VERIFIED",
+        subjectId: disclosure.id,
+        metadata: {
+          receiptId: disclosure.receiptId,
+          fieldsVerified: disclosure.fields,
+        },
+      },
+    });
+  } catch {
+    // Non-fatal if audit table logging fails
   }
 
   return NextResponse.json({

@@ -27,7 +27,20 @@ export async function POST(_request: Request, { params }: { params: Promise<{ id
 
   // Idempotent — already revoked is fine.
   if (!disclosure.revokedAt) {
-    await prisma.disclosure.update({ where: { id }, data: { revokedAt: new Date() } });
+    const revokedAt = new Date();
+    await prisma.disclosure.update({ where: { id }, data: { revokedAt } });
+    try {
+      await prisma.auditEvent.create({
+        data: {
+          actorKey: session.publicKey,
+          eventType: "DISCLOSURE_REVOKED",
+          subjectId: id,
+          metadata: { revokedAt: revokedAt.toISOString() },
+        },
+      });
+    } catch {
+      // Non-fatal if audit logging fails
+    }
   }
 
   return NextResponse.json({ ok: true, revokedAt: disclosure.revokedAt ?? new Date() });

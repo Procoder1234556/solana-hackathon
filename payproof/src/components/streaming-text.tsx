@@ -36,26 +36,21 @@ const FOLLOW_UPS = [
   "Compare gelato and soft serve margins",
 ];
 
-const SOURCE_IMAGES = {
-  scoop:
-    "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='16' fill='%231f7a5f'/%3E%3Cpath d='M20 36c0 7 5.4 12 12 12s12-5 12-12H20Z' fill='%23fff'/%3E%3Ccircle cx='32' cy='25' r='11' fill='%23bff3dd'/%3E%3Cpath d='M24 24c4-7 13-7 17 0' fill='none' stroke='%231f7a5f' stroke-width='4' stroke-linecap='round'/%3E%3C/svg%3E",
-  trends:
-    "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='16' fill='%232f6fec'/%3E%3Cpath d='M15 43 27 31l8 7 14-18' fill='none' stroke='%23fff' stroke-width='7' stroke-linecap='round' stroke-linejoin='round'/%3E%3Ccircle cx='49' cy='20' r='5' fill='%23bfe0ff'/%3E%3C/svg%3E",
-  market:
-    "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='16' fill='%23e56d24'/%3E%3Cpath d='M17 45V25h8v20h-8Zm11 0V16h8v29h-8Zm11 0V30h8v15h-8Z' fill='%23fff'/%3E%3Cpath d='M16 49h32' stroke='%23ffd6b8' stroke-width='4' stroke-linecap='round'/%3E%3C/svg%3E",
-};
+import { KoboyoChart, KoboyoDatabase, KoboyoMarket } from "./koboyo-icons";
 
 /* one cited source rendered as an inline chip and in the sources list */
-export type StreamingSource = { name: string; domain: string; href: string; image: string };
+export type StreamingSource = { name: string; domain: string; href: string; iconKey: "database" | "chart" | "market" };
 
 const SOURCES: StreamingSource[] = [
-  { name: "Scoop Data", domain: "scoopdata.io", href: "https://scoopdata.io/", image: SOURCE_IMAGES.scoop },
-  { name: "Trends Index", domain: "trends.google.com", href: "https://trends.google.com/trends/", image: SOURCE_IMAGES.trends },
-  { name: "Market Basket", domain: "marketbasket.io", href: "https://marketbasket.io/", image: SOURCE_IMAGES.market },
+  { name: "Scoop Data", domain: "scoopdata.io", href: "https://scoopdata.io/", iconKey: "database" },
+  { name: "Trends Index", domain: "trends.google.com", href: "https://trends.google.com/trends/", iconKey: "chart" },
+  { name: "Market Basket", domain: "marketbasket.io", href: "https://marketbasket.io/", iconKey: "market" },
 ];
 
-function sourceImage(source: StreamingSource) {
-  return source.image;
+function SourceIcon({ iconKey, size = 12 }: { iconKey: "database" | "chart" | "market"; size?: number }) {
+  if (iconKey === "database") return <KoboyoDatabase size={size} />;
+  if (iconKey === "chart") return <KoboyoChart size={size} />;
+  return <KoboyoMarket size={size} />;
 }
 
 function SourceChip({ source }: { source?: StreamingSource }) {
@@ -70,8 +65,9 @@ function SourceChip({ source }: { source?: StreamingSource }) {
         transition-colors duration-150 hover:bg-hover hover:text-ink"
       style={{ animation: "pop-in 250ms cubic-bezier(0.23,1,0.32,1) both" }}
     >
-      {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img src={sourceImage(source)} alt="" className="source-avatar size-3 rounded-[3px]" />
+      <span className="flex size-3 items-center justify-center text-[#ff4d00]">
+        <SourceIcon iconKey={source.iconKey} size={10} />
+      </span>
       <span>{source.domain}</span>
     </a>
   );
@@ -196,13 +192,12 @@ export default function StreamingText({
         >
           <span className="flex -space-x-1">
             {sources.map((source) => (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
+              <span
                 key={source.domain}
-                src={sourceImage(source)}
-                alt=""
-                className="source-avatar size-3.5 rounded-full bg-surface shadow-[0_0_0_1.5px_var(--canvas)]"
-              />
+                className="flex size-4 items-center justify-center rounded-full bg-white text-[#ff4d00] shadow-[0_0_0_1.5px_var(--canvas)]"
+              >
+                <SourceIcon iconKey={source.iconKey} size={10} />
+              </span>
             ))}
           </span>
           <span className="text-[12px] text-ink-2">{l.sources}</span>
@@ -227,8 +222,9 @@ export default function StreamingText({
                 rel="noreferrer"
                 className="flex items-center gap-2 rounded-[6px] px-1.5 py-1 text-[12px] text-ink-2 transition-colors duration-150 hover:bg-hover hover:text-ink"
               >
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={sourceImage(source)} alt="" className="source-avatar size-4 rounded-[4px]" />
+                <span className="flex size-4 items-center justify-center rounded-[4px] bg-[#f5f5f7] text-[#ff4d00]">
+                  <SourceIcon iconKey={source.iconKey} size={12} />
+                </span>
                 <span className="animated-underline">{source.name}</span>
                 <span className="ml-auto font-mono text-[10.5px] text-ink-3">{source.domain}</span>
               </a>

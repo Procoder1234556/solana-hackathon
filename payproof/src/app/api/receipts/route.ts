@@ -63,6 +63,25 @@ export async function POST(request: Request) {
       },
       select: { id: true, createdAt: true },
     });
+
+    // Record audit event without exposing private payloads
+    try {
+      await prisma.auditEvent.create({
+        data: {
+          actorKey: session.publicKey,
+          eventType: "RECEIPT_CREATED",
+          subjectId: receipt.id,
+          metadata: {
+            transactionSignature: body.transactionSignature,
+            mintAddress: body.mintAddress,
+            recipientPublicKey: body.recipientPublicKey,
+          },
+        },
+      });
+    } catch {
+      // Non-fatal if audit table logging fails
+    }
+
     return NextResponse.json({ id: receipt.id, createdAt: receipt.createdAt }, { status: 201 });
   } catch (error: unknown) {
     const errCode = (error as { code?: string })?.code;

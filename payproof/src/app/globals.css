@@ -121,6 +121,33 @@
   --radius-4xl: calc(var(--radius) * 2.6);
 }
 
+@keyframes dj-scroll-left {
+  0% { transform: translateX(0); }
+  100% { transform: translateX(-50%); }
+}
+
+@keyframes dj-scroll-right {
+  0% { transform: translateX(-50%); }
+  100% { transform: translateX(0); }
+}
+
+.dj-animate-scroll-left {
+  display: flex;
+  width: max-content;
+  animation: dj-scroll-left 40s linear infinite;
+}
+
+.dj-animate-scroll-left:hover,
+.dj-animate-scroll-right:hover {
+  animation-play-state: paused;
+}
+
+.dj-animate-scroll-right {
+  display: flex;
+  width: max-content;
+  animation: dj-scroll-right 40s linear infinite;
+}
+
 @keyframes pop-in {
   from {
     opacity: 0;
