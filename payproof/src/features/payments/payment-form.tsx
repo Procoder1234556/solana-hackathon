@@ -8,6 +8,7 @@ import { submitToken2022Transfer } from "@/lib/token-2022-transfer";
 import { connectEmployerWallet, getPhantomSolanaWallet } from "@/lib/wallet-session";
 import { createReceiptDraft } from "@/lib/receipt-creation";
 import { encryptReceiptEnvelope } from "@/lib/receipt-envelope";
+import { fetchWithRetry } from "@/lib/client-fetch";
 
 const initialFields = {
   recipientPublicKey: "",
@@ -53,16 +54,16 @@ export function PaymentForm() {
       try {
         const phantom = (window as unknown as { phantom?: { solana?: { signMessage?: (msg: Uint8Array) => Promise<{ signature: Uint8Array }> } } }).phantom?.solana;
         if (phantom?.signMessage) {
-          const nonceRes = await fetch("/api/auth/nonce", {
+          const nonceRes = await fetchWithRetry("/api/auth/nonce", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ publicKey: wallet.publicKey }),
+            body: JSON.stringify({ publicKey: wallet.publicKey, role: "EMPLOYER" }),
           });
           if (nonceRes.ok) {
             const { nonce } = (await nonceRes.json()) as { nonce: string };
             const { signature } = await phantom.signMessage(new TextEncoder().encode(`PayProof sign-in\n${nonce}`));
             const { default: bs58 } = await import("bs58");
-            await fetch("/api/auth/verify", {
+            await fetchWithRetry("/api/auth/verify", {
               method: "POST",
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({ publicKey: wallet.publicKey, nonce, signature: bs58.encode(signature), role: "EMPLOYER" }),
@@ -211,7 +212,7 @@ export function PaymentForm() {
         encryptedEnvelope: envelopeB64,
       };
 
-      let res = await fetch("/api/receipts", {
+      let res = await fetchWithRetry("/api/receipts", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(receiptPayload),
@@ -221,22 +222,22 @@ export function PaymentForm() {
         // Attempt session sign-in with Phantom
         const phantom = (window as unknown as { phantom?: { solana?: { signMessage?: (msg: Uint8Array) => Promise<{ signature: Uint8Array }> } } }).phantom?.solana;
         if (phantom?.signMessage) {
-          const nonceRes = await fetch("/api/auth/nonce", {
+          const nonceRes = await fetchWithRetry("/api/auth/nonce", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ publicKey: review.issuerPublicKey }),
+            body: JSON.stringify({ publicKey: review.issuerPublicKey, role: "EMPLOYER" }),
           });
           if (nonceRes.ok) {
             const { nonce } = (await nonceRes.json()) as { nonce: string };
             const { signature } = await phantom.signMessage(new TextEncoder().encode(`PayProof sign-in\n${nonce}`));
             const { default: bs58 } = await import("bs58");
-            const authRes = await fetch("/api/auth/verify", {
+            const authRes = await fetchWithRetry("/api/auth/verify", {
               method: "POST",
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({ publicKey: review.issuerPublicKey, nonce, signature: bs58.encode(signature), role: "EMPLOYER" }),
             });
             if (authRes.ok) {
-              res = await fetch("/api/receipts", {
+              res = await fetchWithRetry("/api/receipts", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify(receiptPayload),

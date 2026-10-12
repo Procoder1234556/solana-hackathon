@@ -4,6 +4,7 @@ import { useState, useEffect, use } from "react";
 import Link from "next/link";
 import { DjectNav } from "@/components/dject-nav";
 import { disclosureFieldSchema, type DisclosureField } from "@/lib/disclosure";
+import { fetchWithRetry } from "@/lib/client-fetch";
 
 const ALL_FIELDS = disclosureFieldSchema.options;
 const FIELD_LABELS: Record<DisclosureField, string> = {
@@ -139,7 +140,7 @@ export default function ShareReceiptPage({ params }: { params: Params }) {
         payloadSignature: signatureB64,
       };
 
-      let res = await fetch("/api/disclosures", {
+      let res = await fetchWithRetry("/api/disclosures", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(disclosureBody),
@@ -147,23 +148,23 @@ export default function ShareReceiptPage({ params }: { params: Params }) {
 
       if (res.status === 401 && phantomProvider?.publicKey) {
         const pubkeyStr = phantomProvider.publicKey.toString();
-        const nonceRes = await fetch("/api/auth/nonce", {
+        const nonceRes = await fetchWithRetry("/api/auth/nonce", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ publicKey: pubkeyStr }),
+          body: JSON.stringify({ publicKey: pubkeyStr, role: "CONTRACTOR" }),
         });
         if (nonceRes.ok) {
           const { nonce } = (await nonceRes.json()) as { nonce: string };
           const signResult = await phantomProvider.signMessage?.(new TextEncoder().encode(`PayProof sign-in\n${nonce}`));
           if (signResult) {
             const { default: bs58 } = await import("bs58");
-            const authRes = await fetch("/api/auth/verify", {
+            const authRes = await fetchWithRetry("/api/auth/verify", {
               method: "POST",
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({ publicKey: pubkeyStr, nonce, signature: bs58.encode(signResult.signature), role: "CONTRACTOR" }),
             });
             if (authRes.ok) {
-              res = await fetch("/api/disclosures", {
+              res = await fetchWithRetry("/api/disclosures", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify(disclosureBody),
@@ -187,7 +188,7 @@ export default function ShareReceiptPage({ params }: { params: Params }) {
     if (!result) return;
     setRevoking(true);
     try {
-      const res = await fetch(`/api/disclosures/${result.id}/revoke`, { method: "POST" });
+      const res = await fetchWithRetry(`/api/disclosures/${result.id}/revoke`, { method: "POST" });
       if (res.ok) setRevoked(true);
       else setError("Revocation failed.");
     } catch {

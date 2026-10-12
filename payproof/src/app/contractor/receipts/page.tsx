@@ -6,6 +6,7 @@ import { DjectNav } from "@/components/dject-nav";
 import { KoboyoFileText, KoboyoShield, KoboyoCheck } from "@/components/koboyo-icons";
 import { getPhantomSolanaWallet, connectEmployerWallet } from "@/lib/wallet-session";
 import { decryptReceiptEnvelope, type ReceiptEnvelope } from "@/lib/receipt-envelope";
+import { fetchWithRetry } from "@/lib/client-fetch";
 
 type ApiReceipt = {
   id: string;
@@ -83,11 +84,11 @@ export default function ContractorReceiptsPage() {
       const wallet = await connectEmployerWallet(getPhantomSolanaWallet());
       setWalletKey(wallet.publicKey);
 
-      // Request nonce and sign in.
-      const nonceRes = await fetch("/api/auth/nonce", {
+      // Request nonce and sign in with bounded retry.
+      const nonceRes = await fetchWithRetry("/api/auth/nonce", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ publicKey: wallet.publicKey }),
+        body: JSON.stringify({ publicKey: wallet.publicKey, role: "CONTRACTOR" }),
       });
       const { nonce } = (await nonceRes.json()) as { nonce: string };
 
@@ -107,7 +108,7 @@ export default function ContractorReceiptsPage() {
       const { default: bs58 } = await import("bs58");
       const sigB58 = bs58.encode(signature);
 
-      const verifyRes = await fetch("/api/auth/verify", {
+      const verifyRes = await fetchWithRetry("/api/auth/verify", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -130,7 +131,7 @@ export default function ContractorReceiptsPage() {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch("/api/receipts");
+      const res = await fetchWithRetry("/api/receipts");
       if (!res.ok) {
         const data = (await res.json()) as { error?: { message?: string } };
         throw new Error(data.error?.message ?? "Failed to fetch receipts.");

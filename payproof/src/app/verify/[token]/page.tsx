@@ -30,10 +30,16 @@ type VerifyApiResponse = {
   error?: { code?: string; message?: string };
 };
 
+import { fetchWithRetry } from "@/lib/client-fetch";
+
 async function fetchVerification(token: string): Promise<VerifyApiResponse> {
   try {
     const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
-    const res = await fetch(`${appUrl}/api/verify/${token}`, { cache: "no-store" });
+    const res = await fetchWithRetry(`${appUrl}/api/verify/${token}`, {
+      cache: "no-store",
+      maxRetries: 2,
+      initialDelayMs: 200,
+    });
     return (await res.json()) as VerifyApiResponse;
   } catch {
     return { error: { code: "SERVER_ERROR", message: "Unable to reach the verification endpoint." } };
