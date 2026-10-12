@@ -337,7 +337,7 @@ export default function DroppyCryptoLandingPage() {
             </div>
             <div className="flex flex-col">
               <span className="font-extrabold text-lg tracking-tight text-white flex items-center gap-1.5">
-                DROPPY <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-blue-500/20 text-blue-300 border border-blue-400/30">TOKEN-2022</span>
+                PayProof <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-blue-500/20 text-blue-300 border border-blue-400/30">TOKEN-2022</span>
               </span>
             </div>
           </Link>
@@ -1116,7 +1116,7 @@ export default function DroppyCryptoLandingPage() {
 
         <div className="mt-20 select-none pointer-events-none text-center">
           <span className="text-[72px] sm:text-[140px] md:text-[180px] font-black tracking-tighter text-blue-500/10 leading-none block">
-            Droppy
+            PayProof
           </span>
         </div>
       </section>
@@ -1125,7 +1125,7 @@ export default function DroppyCryptoLandingPage() {
       <footer className="w-full py-12 px-4 sm:px-8 bg-[#030714] border-t border-white/10 text-xs text-blue-300/70">
         <div className="max-w-[1360px] mx-auto flex flex-col sm:flex-row items-center justify-between gap-6">
           <div className="flex items-center gap-3">
-            <span className="font-bold text-white tracking-tight">DROPPY · PAYPROOF</span>
+            <span className="font-bold text-white tracking-tight">PAYPROOF</span>
             <span>© 2026 Sovereign Labs. Built on Solana Token-2022.</span>
           </div>
 
